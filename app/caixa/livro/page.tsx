@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { AppLayout } from "@/components/layout/app-layout"
@@ -22,6 +22,7 @@ import {
   Filter,
   MoreHorizontal,
   Eye,
+  Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -43,21 +44,32 @@ const columns: ColumnDef<CashTransaction>[] = [
     header: "Tipo",
     cell: ({ row }) => {
       const type = row.getValue("type") as string
-      const configs: Record<string, { label: string; icon: typeof ArrowDownLeft; className: string }> = {
+      const configs: Record<string, { label: string; icon: any; className: string }> = {
         entrada: {
           label: "Entrada",
           icon: ArrowDownLeft,
           className: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30",
         },
-        saida: { label: "Saída", icon: ArrowUpRight, className: "text-red-600 bg-red-100 dark:bg-red-900/30" },
+        saida: {
+          label: "Saída",
+          icon: ArrowUpRight,
+          className: "text-red-600 bg-red-100 dark:bg-red-900/30",
+        },
         transferencia: {
           label: "Transferência",
           icon: ArrowRightLeft,
           className: "text-blue-600 bg-blue-100 dark:bg-blue-900/30",
         },
       }
-      const config = configs[type]
+
+      const config = configs[type] || {
+        label: type,
+        icon: ArrowRightLeft,
+        className: "text-muted-foreground bg-muted",
+      }
+
       const Icon = config.icon
+
       return (
         <div className="flex items-center gap-2">
           <div className={`flex h-7 w-7 items-center justify-center rounded-full ${config.className}`}>
@@ -82,7 +94,7 @@ const columns: ColumnDef<CashTransaction>[] = [
     header: "Pagamento",
     cell: ({ row }) => {
       const method = paymentMethods.find((m) => m.value === row.getValue("paymentMethod"))
-      return method?.label || row.getValue("paymentMethod")
+      return method?.label || (row.getValue("paymentMethod") as any)
     },
   },
   {
@@ -93,9 +105,11 @@ const columns: ColumnDef<CashTransaction>[] = [
       const amount = row.getValue("amount") as number
       return (
         <span
-          className={`font-medium ${type === "entrada" ? "text-emerald-600" : type === "saida" ? "text-red-600" : "text-blue-600"}`}
+          className={`font-medium ${
+            type === "entrada" ? "text-emerald-600" : type === "saida" ? "text-red-600" : "text-blue-600"
+          }`}
         >
-          {type === "entrada" ? "+" : "-"}
+          {type === "entrada" ? "+" : type === "saida" ? "-" : ""}
           {formatCurrency(amount)}
         </span>
       )
@@ -140,15 +154,13 @@ export default function LivroCaixaPage() {
 
   useEffect(() => {
     loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const [boxesData, transactionsData] = await Promise.all([
-        getCashBoxes(),
-        getCashTransactions(),
-      ])
+      const [boxesData, transactionsData] = await Promise.all([getCashBoxes(), getCashTransactions()])
       setCashBoxes(boxesData)
       setTransactions(transactionsData)
     } catch (error) {
@@ -180,7 +192,6 @@ export default function LivroCaixaPage() {
   filteredTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   const totalEntradas = filteredTransactions.filter((t) => t.type === "entrada").reduce((sum, t) => sum + t.amount, 0)
-
   const totalSaidas = filteredTransactions.filter((t) => t.type === "saida").reduce((sum, t) => sum + t.amount, 0)
 
   if (isLoading) {
@@ -259,7 +270,7 @@ export default function LivroCaixaPage() {
                 <label className="text-sm font-medium">Período</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-[240px] justify-start text-left font-normal")}>
+                    <Button variant="outline" className={cn("w-[240px] justify-start text-left font-normal")} type="button">
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dateRange.from ? (
                         dateRange.to ? (
@@ -320,9 +331,7 @@ export default function LivroCaixaPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Saldo do Período</p>
-                  <p
-                    className={`text-2xl font-bold ${totalEntradas - totalSaidas >= 0 ? "text-emerald-600" : "text-red-600"}`}
-                  >
+                  <p className={`text-2xl font-bold ${totalEntradas - totalSaidas >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                     {formatCurrency(totalEntradas - totalSaidas)}
                   </p>
                 </div>
@@ -336,13 +345,7 @@ export default function LivroCaixaPage() {
           </Card>
         </div>
 
-        {/* Transactions Table */}
-        <DataTable
-          columns={columns}
-          data={filteredTransactions}
-          searchKey="description"
-          searchPlaceholder="Buscar movimentações..."
-        />
+        <DataTable columns={columns} data={filteredTransactions} searchKey="description" searchPlaceholder="Buscar movimentações..." />
       </div>
     </AppLayout>
   )
