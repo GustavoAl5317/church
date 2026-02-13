@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
@@ -25,17 +24,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { 
-  Plus, MoreHorizontal, Eye, Edit, FileText, CheckCircle, RefreshCw, Loader2, Calendar, Star,
-  ChevronLeft, ChevronRight, Trash2, Clock, Church
+import {
+  Plus,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  CheckCircle,
+  RefreshCw,
+  Loader2,
+  Calendar,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  Church,
 } from "lucide-react"
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, isToday, differenceInDays } from "date-fns"
 import { serviceTypes, incomeTypes, paymentMethods } from "@/lib/constants"
 import type { Service, ServiceTemplate, IncomeType, PaymentMethod } from "@/lib/types"
 import { formatCurrency, formatDate } from "@/lib/utils/format"
-import { 
-  getServices, generateWeeklyServices, getServiceTemplates, getService, updateService, 
-  createServiceIncome, createServiceTemplate, updateServiceTemplate, deleteServiceTemplate 
+import {
+  getServices,
+  generateWeeklyServices,
+  getServiceTemplates,
+  getService,
+  updateService,
+  createServiceIncome,
+  createServiceTemplate,
+  updateServiceTemplate,
+  deleteServiceTemplate,
 } from "@/lib/services/services"
 import { toast } from "sonner"
 
@@ -71,7 +88,7 @@ const createColumns = (nextCulto?: Service): ColumnDef<Service>[] => [
       const service = row.original
       const serviceDate = new Date(service.date)
       const isNext = nextCulto && service.id === nextCulto.id
-      
+
       return (
         <div className="flex items-center gap-2">
           {isNext && <Star className="h-4 w-4 text-primary fill-primary" />}
@@ -80,20 +97,14 @@ const createColumns = (nextCulto?: Service): ColumnDef<Service>[] => [
       )
     },
   },
-  {
-    accessorKey: "time",
-    header: "Horário",
-  },
-  {
-    accessorKey: "name",
-    header: "Nome",
-  },
+  { accessorKey: "time", header: "Horário" },
+  { accessorKey: "name", header: "Nome" },
   {
     accessorKey: "type",
     header: "Tipo",
     cell: ({ row }) => {
       const type = serviceTypes.find((t) => t.value === row.getValue("type"))
-      return type?.label || row.getValue("type")
+      return type?.label || (row.getValue("type") as any)
     },
   },
   {
@@ -124,17 +135,11 @@ const createColumns = (nextCulto?: Service): ColumnDef<Service>[] => [
         return (
           <div className="flex flex-col">
             <span className="font-semibold text-emerald-600">{formatCurrency(value)}</span>
-            {service.status === "agendado" && (
-              <span className="text-xs text-muted-foreground">Aguardando registro</span>
-            )}
+            {service.status === "agendado" && <span className="text-xs text-muted-foreground">Aguardando registro</span>}
           </div>
         )
       }
-      return (
-        <span className="text-muted-foreground">
-          {service.status === "finalizado" ? "R$ 0,00" : "Não registrado"}
-        </span>
-      )
+      return <span className="text-muted-foreground">{service.status === "finalizado" ? "R$ 0,00" : "Não registrado"}</span>
     },
   },
   {
@@ -159,14 +164,12 @@ const createColumns = (nextCulto?: Service): ColumnDef<Service>[] => [
               </Link>
             </DropdownMenuItem>
             {service.status === "agendado" && (
-              <>
-                <DropdownMenuItem asChild>
-                  <Link href={`/cultos/${service.id}/editar`}>
-                    <Edit className="mr-2 h-4 w-4" />
-                    Editar
-                  </Link>
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem asChild>
+                <Link href={`/cultos/${service.id}/editar`}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Editar
+                </Link>
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -175,16 +178,17 @@ const createColumns = (nextCulto?: Service): ColumnDef<Service>[] => [
   },
 ]
 
-export default function CultosPage() {
+function CultosContent() {
   const searchParams = useSearchParams()
   const defaultTab = searchParams.get("tab") || "lista"
-  
-  const [activeTab, setActiveTab] = useState(defaultTab)
+  const preSelectedId = searchParams.get("id") || ""
+
+  const [activeTab, setActiveTab] = useState(() => defaultTab)
   const [services, setServices] = useState<Service[]>([])
   const [templates, setTemplates] = useState<ServiceTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
-  
+
   // Fechamento state
   const [currentStep, setCurrentStep] = useState(1)
   const [selectedService, setSelectedService] = useState("")
@@ -194,7 +198,7 @@ export default function CultosPage() {
     { id: "1", type: "dizimo", amount: 0, paymentMethod: "dinheiro" },
     { id: "2", type: "oferta", amount: 0, paymentMethod: "dinheiro" },
   ])
-  
+
   // Configurar state
   const [newTemplate, setNewTemplate] = useState({
     name: "",
@@ -210,8 +214,9 @@ export default function CultosPage() {
       loadTemplates()
     }
     if (activeTab === "fechamento") {
-      loadAllServices()
+      loadAllServices(preSelectedId)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
   const loadServices = async () => {
@@ -220,12 +225,12 @@ export default function CultosPage() {
       const now = new Date()
       const monthStart = startOfMonth(now)
       const monthEnd = endOfMonth(now)
-      
+
       const [data, templatesData] = await Promise.all([
         getServices(startOfDay(monthStart), endOfDay(monthEnd)),
-        getServiceTemplates().catch(() => [])
+        getServiceTemplates().catch(() => []),
       ])
-      
+
       setServices(data)
       setTemplates(templatesData as ServiceTemplate[])
     } catch (error) {
@@ -236,15 +241,14 @@ export default function CultosPage() {
     }
   }
 
-  const loadAllServices = async () => {
+  const loadAllServices = async (preId?: string) => {
     try {
       const allServices = await getServices()
       const sorted = allServices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       setPendingServices(sorted)
-      
-      const preSelectedId = searchParams.get("id")
-      if (preSelectedId) {
-        setSelectedService(preSelectedId)
+
+      if (preId) {
+        setSelectedService(preId)
         setCurrentStep(2)
       }
     } catch (error) {
@@ -267,6 +271,7 @@ export default function CultosPage() {
     if (selectedService && activeTab === "fechamento") {
       loadService()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedService, activeTab])
 
   const loadService = async () => {
@@ -339,18 +344,15 @@ export default function CultosPage() {
         })
       }
 
-      await updateService(selectedService, {
-        status: "finalizado",
-      })
+      await updateService(selectedService, { status: "finalizado" })
 
       toast.success("Arrecadação registrada com sucesso!")
-      
-      // Disparar evento para atualizar o dashboard
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('dashboard:refresh'))
-        window.dispatchEvent(new CustomEvent('cash:refresh'))
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("dashboard:refresh"))
+        window.dispatchEvent(new CustomEvent("cash:refresh"))
       }
-      
+
       setCurrentStep(1)
       setSelectedService("")
       setIncomes([
@@ -358,7 +360,7 @@ export default function CultosPage() {
         { id: "2", type: "oferta", amount: 0, paymentMethod: "dinheiro" },
       ])
       await loadServices()
-      await loadAllServices()
+      await loadAllServices(preSelectedId)
     } catch (error) {
       console.error("Error finishing service:", error)
       toast.error("Erro ao registrar arrecadação")
@@ -383,7 +385,7 @@ export default function CultosPage() {
         isRecurring: true,
         isActive: true,
       })
-      
+
       toast.success("Template criado com sucesso!")
       setNewTemplate({ name: "", type: "", dayOfWeek: "", time: "" })
       await loadTemplates()
@@ -407,7 +409,7 @@ export default function CultosPage() {
 
   const handleDeleteTemplate = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este template?")) return
-    
+
     try {
       await deleteServiceTemplate(id)
       toast.success("Template excluído com sucesso!")
@@ -422,17 +424,14 @@ export default function CultosPage() {
   const now = new Date()
   const upcomingServices = services
     .filter((s) => s.status === "agendado" || s.status === "em_andamento")
-    .sort((a, b) => {
-      const dateA = new Date(a.date).getTime()
-      const dateB = new Date(b.date).getTime()
-      return dateA - dateB
-    })
-  
-  const nextService = upcomingServices.find((s) => {
-    const serviceDate = new Date(s.date)
-    const serviceDateTime = new Date(`${s.date.toISOString().split('T')[0]}T${s.time}`)
-    return serviceDateTime >= now || isToday(serviceDate)
-  }) || upcomingServices[0]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  const nextService =
+    upcomingServices.find((s) => {
+      const serviceDate = new Date(s.date)
+      const serviceDateTime = new Date(`${(s.date as any).toISOString?.().split("T")[0] || String(s.date).split("T")[0]}T${s.time}`)
+      return serviceDateTime >= now || isToday(serviceDate)
+    }) || upcomingServices[0]
 
   const finishedServices = services.filter((s) => s.status === "finalizado")
   const totalArrecadado = finishedServices.reduce((sum, s) => sum + (s.totalIncome || 0), 0)
@@ -446,16 +445,8 @@ export default function CultosPage() {
             <p className="text-muted-foreground">Gerencie cultos, configure templates e registre arrecadações</p>
           </div>
           {activeTab === "lista" && (
-            <Button 
-              variant="outline" 
-              onClick={handleGenerateWeekly}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
+            <Button variant="outline" onClick={handleGenerateWeekly} disabled={isGenerating}>
+              {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Gerar Próximas Semanas
             </Button>
           )}
@@ -474,9 +465,11 @@ export default function CultosPage() {
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-semibold">Próximo Culto</h3>
                       <Badge variant="default" className="bg-primary">
-                        {isToday(nextService.date) ? "Hoje" : 
-                         differenceInDays(nextService.date, now) === 1 ? "Amanhã" :
-                         `${differenceInDays(nextService.date, now)} dias`}
+                        {isToday(nextService.date)
+                          ? "Hoje"
+                          : differenceInDays(nextService.date, now) === 1
+                            ? "Amanhã"
+                            : `${differenceInDays(nextService.date, now)} dias`}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -484,11 +477,13 @@ export default function CultosPage() {
                     </p>
                   </div>
                 </div>
-                <Button onClick={() => {
-                  setActiveTab("fechamento")
-                  setSelectedService(nextService.id)
-                  setCurrentStep(2)
-                }}>
+                <Button
+                  onClick={() => {
+                    setActiveTab("fechamento")
+                    setSelectedService(nextService.id)
+                    setCurrentStep(2)
+                  }}
+                >
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Registrar Arrecadação
                 </Button>
@@ -515,7 +510,7 @@ export default function CultosPage() {
                   <Church className="h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhum culto encontrado</h3>
                   <p className="text-sm text-muted-foreground text-center mb-4">
-                    Configure os cultos semanais e clique em "Gerar Próximas Semanas" para criar os cultos.
+                    Configure os cultos semanais e clique em &quot;Gerar Próximas Semanas&quot; para criar os cultos.
                   </p>
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setActiveTab("configurar")}>
@@ -523,11 +518,7 @@ export default function CultosPage() {
                       Configurar Cultos
                     </Button>
                     <Button onClick={handleGenerateWeekly} disabled={isGenerating}>
-                      {isGenerating ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                      )}
+                      {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                       Gerar Próximas Semanas
                     </Button>
                   </div>
@@ -540,9 +531,7 @@ export default function CultosPage() {
                     <Card>
                       <CardHeader className="pb-2">
                         <CardDescription>Total Arrecadado</CardDescription>
-                        <CardTitle className="text-2xl text-emerald-600">
-                          {formatCurrency(totalArrecadado)}
-                        </CardTitle>
+                        <CardTitle className="text-2xl text-emerald-600">{formatCurrency(totalArrecadado)}</CardTitle>
                       </CardHeader>
                     </Card>
                     <Card>
@@ -555,24 +544,19 @@ export default function CultosPage() {
                       <CardHeader className="pb-2">
                         <CardDescription>Média por Culto</CardDescription>
                         <CardTitle className="text-2xl">
-                          {finishedServices.length > 0
-                            ? formatCurrency(totalArrecadado / finishedServices.length)
-                            : formatCurrency(0)}
+                          {finishedServices.length > 0 ? formatCurrency(totalArrecadado / finishedServices.length) : formatCurrency(0)}
                         </CardTitle>
                       </CardHeader>
                     </Card>
                   </div>
                 )}
-                <DataTable 
-                  columns={createColumns(nextService)} 
-                  data={services} 
-                  searchKey="name" 
-                  searchPlaceholder="Buscar cultos..." 
-                />
+
+                <DataTable columns={createColumns(nextService)} data={services} searchKey="name" searchPlaceholder="Buscar cultos..." />
               </>
             )}
           </TabsContent>
 
+          {/* Fechamento */}
           <TabsContent value="fechamento" className="space-y-4">
             <Card>
               <CardHeader>
@@ -586,15 +570,11 @@ export default function CultosPage() {
                     {steps.map((step) => (
                       <div
                         key={step.id}
-                        className={`flex items-center gap-2 ${
-                          currentStep >= step.id ? "text-primary" : "text-muted-foreground"
-                        }`}
+                        className={`flex items-center gap-2 ${currentStep >= step.id ? "text-primary" : "text-muted-foreground"}`}
                       >
                         <div
                           className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                            currentStep >= step.id
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
+                            currentStep >= step.id ? "bg-primary text-primary-foreground" : "bg-muted"
                           }`}
                         >
                           {currentStep > step.id ? <CheckCircle className="h-4 w-4" /> : step.id}
@@ -608,19 +588,17 @@ export default function CultosPage() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between mb-4">
                         <div className="text-sm text-muted-foreground">
-                          {pendingServices.length} {pendingServices.length === 1 ? 'culto encontrado' : 'cultos encontrados'}
+                          {pendingServices.length} {pendingServices.length === 1 ? "culto encontrado" : "cultos encontrados"}
                         </div>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              const currentIndex = pendingServices.findIndex(s => s.id === selectedService)
-                              if (currentIndex > 0) {
-                                setSelectedService(pendingServices[currentIndex - 1].id)
-                              }
+                              const currentIndex = pendingServices.findIndex((s) => s.id === selectedService)
+                              if (currentIndex > 0) setSelectedService(pendingServices[currentIndex - 1].id)
                             }}
-                            disabled={!selectedService || pendingServices.findIndex(s => s.id === selectedService) === 0}
+                            disabled={!selectedService || pendingServices.findIndex((s) => s.id === selectedService) === 0}
                           >
                             <ChevronLeft className="h-4 w-4" />
                             Anterior
@@ -629,19 +607,20 @@ export default function CultosPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              const currentIndex = pendingServices.findIndex(s => s.id === selectedService)
-                              if (currentIndex < pendingServices.length - 1) {
-                                setSelectedService(pendingServices[currentIndex + 1].id)
-                              }
+                              const currentIndex = pendingServices.findIndex((s) => s.id === selectedService)
+                              if (currentIndex < pendingServices.length - 1) setSelectedService(pendingServices[currentIndex + 1].id)
                             }}
-                            disabled={!selectedService || pendingServices.findIndex(s => s.id === selectedService) === pendingServices.length - 1}
+                            disabled={
+                              !selectedService ||
+                              pendingServices.findIndex((s) => s.id === selectedService) === pendingServices.length - 1
+                            }
                           >
                             Próximo
                             <ChevronRight className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
-                      
+
                       <div className="grid gap-3 max-h-[400px] overflow-y-auto">
                         {pendingServices.map((s) => {
                           const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -650,7 +629,7 @@ export default function CultosPage() {
                             finalizado: { label: "Finalizado", variant: "default" },
                           }
                           const status = statusConfig[s.status] || { label: s.status, variant: "outline" as const }
-                          
+
                           return (
                             <div
                               key={s.id}
@@ -707,16 +686,13 @@ export default function CultosPage() {
                           </Button>
                         </div>
 
-                        {incomes.map((income, index) => (
+                        {incomes.map((income) => (
                           <Card key={income.id}>
                             <CardContent className="pt-6">
                               <div className="grid gap-4 md:grid-cols-4">
                                 <div>
                                   <Label>Tipo</Label>
-                                  <Select
-                                    value={income.type}
-                                    onValueChange={(value) => updateIncome(income.id, "type", value)}
-                                  >
+                                  <Select value={income.type} onValueChange={(value) => updateIncome(income.id, "type", value)}>
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
@@ -729,6 +705,7 @@ export default function CultosPage() {
                                     </SelectContent>
                                   </Select>
                                 </div>
+
                                 <div>
                                   <Label>Valor</Label>
                                   <Input
@@ -739,6 +716,7 @@ export default function CultosPage() {
                                     placeholder="0.00"
                                   />
                                 </div>
+
                                 <div>
                                   <Label>Forma de Pagamento</Label>
                                   <Select
@@ -757,13 +735,9 @@ export default function CultosPage() {
                                     </SelectContent>
                                   </Select>
                                 </div>
+
                                 <div className="flex items-end">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeIncome(income.id)}
-                                    className="w-full"
-                                  >
+                                  <Button variant="ghost" size="sm" onClick={() => removeIncome(income.id)} className="w-full">
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -777,9 +751,7 @@ export default function CultosPage() {
 
                       <div className="flex justify-between items-center">
                         <span className="text-lg font-semibold">Total:</span>
-                        <span className="text-2xl font-bold text-emerald-600">
-                          {formatCurrency(totalAmount)}
-                        </span>
+                        <span className="text-2xl font-bold text-emerald-600">{formatCurrency(totalAmount)}</span>
                       </div>
                     </div>
                   )}
@@ -828,15 +800,14 @@ export default function CultosPage() {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        if (currentStep > 1) {
-                          setCurrentStep(currentStep - 1)
-                        }
+                        if (currentStep > 1) setCurrentStep(currentStep - 1)
                       }}
                       disabled={currentStep === 1}
                     >
                       <ChevronLeft className="mr-2 h-4 w-4" />
                       Voltar
                     </Button>
+
                     {currentStep < 3 ? (
                       <Button
                         onClick={() => {
@@ -869,6 +840,7 @@ export default function CultosPage() {
             </Card>
           </TabsContent>
 
+          {/* Configurar */}
           <TabsContent value="configurar" className="space-y-4">
             <Card>
               <CardHeader>
@@ -887,10 +859,7 @@ export default function CultosPage() {
                   </div>
                   <div>
                     <Label>Tipo</Label>
-                    <Select
-                      value={newTemplate.type}
-                      onValueChange={(value) => setNewTemplate({ ...newTemplate, type: value })}
-                    >
+                    <Select value={newTemplate.type} onValueChange={(value) => setNewTemplate({ ...newTemplate, type: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione" />
                       </SelectTrigger>
@@ -923,19 +892,12 @@ export default function CultosPage() {
                   </div>
                   <div>
                     <Label>Horário</Label>
-                    <Input
-                      type="time"
-                      value={newTemplate.time}
-                      onChange={(e) => setNewTemplate({ ...newTemplate, time: e.target.value })}
-                    />
+                    <Input type="time" value={newTemplate.time} onChange={(e) => setNewTemplate({ ...newTemplate, time: e.target.value })} />
                   </div>
                 </div>
+
                 <Button onClick={handleAddTemplate} disabled={isSaving}>
-                  {isSaving ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                   Adicionar Template
                 </Button>
 
@@ -950,19 +912,18 @@ export default function CultosPage() {
                       {templates.map((template) => {
                         const dayName = dayNames.find((d) => d.value === String(template.dayOfWeek))
                         const typeName = serviceTypes.find((t) => t.value === template.type)?.label
-                        
+
                         return (
                           <Card key={template.id}>
                             <CardContent className="pt-6">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <div>
-                                    <p className="font-medium">{template.name}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {dayName?.label || `Dia ${template.dayOfWeek}`} às {template.time} - {typeName}
-                                    </p>
-                                  </div>
+                                <div>
+                                  <p className="font-medium">{template.name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {dayName?.label || `Dia ${template.dayOfWeek}`} às {template.time} - {typeName}
+                                  </p>
                                 </div>
+
                                 <div className="flex items-center gap-2">
                                   <div className="flex items-center gap-2">
                                     <Label htmlFor={`active-${template.id}`} className="text-sm">
@@ -974,11 +935,7 @@ export default function CultosPage() {
                                       onCheckedChange={() => handleToggleTemplate(template.id, template.isActive)}
                                     />
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeleteTemplate(template.id)}
-                                  >
+                                  <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
@@ -996,5 +953,13 @@ export default function CultosPage() {
         </Tabs>
       </div>
     </AppLayout>
+  )
+}
+
+export default function CultosPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Carregando...</div>}>
+      <CultosContent />
+    </Suspense>
   )
 }
