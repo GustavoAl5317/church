@@ -53,3 +53,29 @@ export function parseDate(dateString: string | null): Date | undefined {
   // Para outros formatos, usar o construtor padrão
   return new Date(dateString)
 }
+
+/**
+ * Traduz um erro do Supabase em uma mensagem que diz o que fazer.
+ */
+export function describeSupabaseError(error: unknown): string {
+  const e = (error ?? {}) as { code?: string; message?: string; hint?: string; details?: string }
+  const message = e.message ?? String(error)
+  const lower = message.toLowerCase()
+
+  if (e.code === 'PGRST205' || e.code === '42P01' || lower.includes('does not exist') || lower.includes('could not find the table')) {
+    return `O banco ainda não tem as tabelas do sistema. Rode supabase/schema.sql e depois supabase/migration-igreja-manager.sql no SQL Editor do Supabase. (${message})`
+  }
+  if (e.code === '42703' || lower.includes('column')) {
+    return `O banco está desatualizado. Rode supabase/migration-igreja-manager.sql no SQL Editor do Supabase. (${message})`
+  }
+  if (lower.includes('invalid api key') || lower.includes('jwt') || e.code === 'PGRST301') {
+    return 'A chave do Supabase é inválida. Confira NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.'
+  }
+  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('fetch failed')) {
+    return 'Não foi possível conectar ao Supabase. Confira NEXT_PUBLIC_SUPABASE_URL na Vercel e se o projeto do Supabase está ativo (projetos gratuitos pausam após dias sem uso).'
+  }
+  if (e.code === '42501' || lower.includes('permission denied') || lower.includes('row-level security')) {
+    return `O Supabase bloqueou o acesso à tabela (permissões/RLS). (${message})`
+  }
+  return message
+}

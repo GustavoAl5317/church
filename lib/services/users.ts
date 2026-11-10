@@ -1,4 +1,4 @@
-import { supabase, parseDate, isSupabaseConfigured } from '@/lib/supabase'
+import { supabase, parseDate, isSupabaseConfigured, describeSupabaseError } from '@/lib/supabase'
 import type { PasswordResetRequest, User } from '@/lib/types'
 import { hashPassword, verifyPassword } from '@/lib/crypto'
 
@@ -36,7 +36,9 @@ function mapUser(row: UserRow): User {
 
 function requireSupabase() {
   if (!isSupabaseConfigured) {
-    throw new Error('Supabase não está configurado')
+    throw new Error(
+      'Supabase não está configurado. Cadastre NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.',
+    )
   }
 }
 
@@ -139,12 +141,18 @@ export async function authenticateUser(email: string, password: string): Promise
 
   if (error) {
     console.error('❌ Erro ao buscar usuário:', error)
-    throw new Error('Erro ao autenticar usuário')
+    throw new Error(describeSupabaseError(error))
   }
 
   if (!row) return null
 
-  const storedHash = await getPasswordHash(row.id)
+  let storedHash: string | null
+  try {
+    storedHash = await getPasswordHash(row.id)
+  } catch (passwordError) {
+    console.error('❌ Erro ao buscar senha:', passwordError)
+    throw new Error(describeSupabaseError(passwordError))
+  }
   if (!storedHash || !(await verifyPassword(password, storedHash))) {
     return null
   }
