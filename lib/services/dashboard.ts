@@ -3,7 +3,7 @@ import { getBillsPayable } from './bills'
 import { getServices } from './services'
 import type { DashboardSummary, ChartData, IncomeByTypeData } from '@/lib/types'
 import { startOfMonth, endOfMonth, subMonths, format, startOfDay, endOfDay } from 'date-fns'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   // Retornar valores padrão se Supabase não estiver configurado
@@ -236,5 +236,64 @@ export async function getIncomeByTypeData(): Promise<IncomeByTypeData[]> {
   } catch (error) {
     console.error('Erro ao buscar dados de receita por tipo:', error)
     return []
+  }
+}
+
+export interface CommunitySummary {
+  members: number | null
+  eventsThisMonth: number
+  tithesThisMonth: number | null
+  servicesThisMonth: number
+}
+
+function monthRange() {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const first = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return { first, last: `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}` }
+}
+
+/**
+ * Números do topo do dashboard. Membros e dízimos só são buscados para quem tem acesso a eles.
+ */
+export async function getCommunitySummary(options: {
+  includeMembers: boolean
+  includeTithes: boolean
+}): Promise<CommunitySummary> {
+  if (!isSupabaseConfigured) {
+    return { members: null, eventsThisMonth: 0, tithesThisMonth: null, servicesThisMonth: 0 }
+  }
+
+  const { first, last } = monthRange()
+
+  const [members, events, services, tithes] = await Promise.all([
+    options.includeMembers
+      ? supabase.from('members').select('id', { count: 'exact', head: true }).neq('status', 'inativo')
+      : null,
+    supabase
+      .from('events')
+      .select('id', { count: 'exact', head: true })
+      .gte('start_date', first)
+      .lte('start_date', last)
+      .neq('status', 'cancelado'),
+    supabase.from('services').select('id', { count: 'exact', head: true }).gte('date', first).lte('date', last),
+    options.includeTithes
+      ? supabase
+          .from('tithes')
+          .select('amount')
+          .eq('status', 'confirmado')
+          .gte('date', first)
+          .lte('date', last)
+      : null,
+  ])
+
+  return {
+    members: members ? members.count ?? 0 : null,
+    eventsThisMonth: events.count ?? 0,
+    servicesThisMonth: services.count ?? 0,
+    tithesThisMonth: tithes
+      ? (tithes.data || []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+      : null,
   }
 }

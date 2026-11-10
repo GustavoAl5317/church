@@ -1,5 +1,52 @@
 import { supabase, parseDate, isSupabaseConfigured } from '@/lib/supabase'
 import type { Member } from '@/lib/types'
+import type { Database } from '@/lib/database.types'
+
+type MemberRow = Database['public']['Tables']['members']['Row']
+export type MemberInput = Omit<Member, 'id' | 'createdAt' | 'updatedAt'>
+
+function toDateOnly(date: Date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function mapMember(row: MemberRow): Member {
+  return {
+    id: row.id,
+    name: row.name,
+    birthDate: row.birth_date ? parseDate(row.birth_date) : undefined,
+    phone: row.phone || undefined,
+    email: row.email || undefined,
+    address: row.address || undefined,
+    entryDate: parseDate(row.entry_date)!,
+    status: row.status as Member['status'],
+    // Bancos que ainda não rodaram a migração não têm estas colunas
+    memberRole: (row.member_role as Member['memberRole']) || 'membro',
+    baptized: row.baptized ?? false,
+    ministries: row.ministries || [],
+    observations: row.observations || undefined,
+    createdAt: parseDate(row.created_at)!,
+    updatedAt: parseDate(row.updated_at)!,
+  }
+}
+
+function toRow(member: Partial<MemberInput>) {
+  const row: Record<string, unknown> = {}
+  if (member.name !== undefined) row.name = member.name.trim()
+  if (member.birthDate !== undefined) row.birth_date = member.birthDate ? toDateOnly(member.birthDate) : null
+  if (member.phone !== undefined) row.phone = member.phone?.trim() || null
+  if (member.email !== undefined) row.email = member.email?.trim() || null
+  if (member.address !== undefined) row.address = member.address?.trim() || null
+  if (member.entryDate !== undefined) row.entry_date = toDateOnly(member.entryDate)
+  if (member.status !== undefined) row.status = member.status
+  if (member.memberRole !== undefined) row.member_role = member.memberRole
+  if (member.baptized !== undefined) row.baptized = member.baptized
+  if (member.ministries !== undefined) row.ministries = member.ministries || []
+  if (member.observations !== undefined) row.observations = member.observations?.trim() || null
+  return row
+}
 
 export async function getMembers() {
   if (!isSupabaseConfigured) {
@@ -8,134 +55,44 @@ export async function getMembers() {
     )
   }
 
-  const { data, error } = await supabase
-    .from('members')
-    .select('*')
-    .order('name')
+  const { data, error } = await supabase.from('members').select('*').order('name')
 
   if (error) throw error
-
-  return data.map((member): Member => ({
-    id: member.id,
-    name: member.name,
-    birthDate: member.birth_date ? parseDate(member.birth_date) : undefined,
-    phone: member.phone || undefined,
-    email: member.email || undefined,
-    address: member.address || undefined,
-    entryDate: parseDate(member.entry_date)!,
-    status: member.status as Member['status'],
-    ministries: member.ministries || [],
-    observations: member.observations || undefined,
-    createdAt: parseDate(member.created_at)!,
-    updatedAt: parseDate(member.updated_at)!,
-  }))
+  return (data || []).map(mapMember)
 }
 
 export async function getMember(id: string) {
-  const { data, error } = await supabase
-    .from('members')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const { data, error } = await supabase.from('members').select('*').eq('id', id).single()
 
   if (error) throw error
-
-  return {
-    id: data.id,
-    name: data.name,
-    birthDate: data.birth_date ? parseDate(data.birth_date) : undefined,
-    phone: data.phone || undefined,
-    email: data.email || undefined,
-    address: data.address || undefined,
-    entryDate: parseDate(data.entry_date)!,
-    status: data.status as Member['status'],
-    ministries: data.ministries || [],
-    observations: data.observations || undefined,
-    createdAt: parseDate(data.created_at)!,
-    updatedAt: parseDate(data.updated_at)!,
-  }
+  return mapMember(data)
 }
 
-export async function createMember(member: Omit<Member, 'id' | 'createdAt' | 'updatedAt'>) {
+export async function createMember(member: MemberInput) {
   const { data, error } = await supabase
     .from('members')
-    .insert({
-      name: member.name,
-      birth_date: member.birthDate ? member.birthDate.toISOString().split('T')[0] : null,
-      phone: member.phone || null,
-      email: member.email || null,
-      address: member.address || null,
-      entry_date: member.entryDate.toISOString().split('T')[0],
-      status: member.status,
-      ministries: member.ministries || [],
-      observations: member.observations || null,
-    })
+    .insert(toRow(member) as Database['public']['Tables']['members']['Insert'])
     .select()
     .single()
 
   if (error) throw error
-
-  return {
-    id: data.id,
-    name: data.name,
-    birthDate: data.birth_date ? parseDate(data.birth_date) : undefined,
-    phone: data.phone || undefined,
-    email: data.email || undefined,
-    address: data.address || undefined,
-    entryDate: parseDate(data.entry_date)!,
-    status: data.status as Member['status'],
-    ministries: data.ministries || [],
-    observations: data.observations || undefined,
-    createdAt: parseDate(data.created_at)!,
-    updatedAt: parseDate(data.updated_at)!,
-  }
+  return mapMember(data)
 }
 
-export async function updateMember(id: string, updates: Partial<Member>) {
-  const updateData: any = {}
-  
-  if (updates.name !== undefined) updateData.name = updates.name
-  if (updates.birthDate !== undefined) updateData.birth_date = updates.birthDate ? updates.birthDate.toISOString().split('T')[0] : null
-  if (updates.phone !== undefined) updateData.phone = updates.phone || null
-  if (updates.email !== undefined) updateData.email = updates.email || null
-  if (updates.address !== undefined) updateData.address = updates.address || null
-  if (updates.entryDate !== undefined) updateData.entry_date = updates.entryDate.toISOString().split('T')[0]
-  if (updates.status !== undefined) updateData.status = updates.status
-  if (updates.ministries !== undefined) updateData.ministries = updates.ministries || []
-  if (updates.observations !== undefined) updateData.observations = updates.observations || null
-  
-  updateData.updated_at = new Date().toISOString()
-
+export async function updateMember(id: string, updates: Partial<MemberInput>) {
   const { data, error } = await supabase
     .from('members')
-    .update(updateData)
+    .update({ ...toRow(updates), updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
 
   if (error) throw error
-
-  return {
-    id: data.id,
-    name: data.name,
-    birthDate: data.birth_date ? parseDate(data.birth_date) : undefined,
-    phone: data.phone || undefined,
-    email: data.email || undefined,
-    address: data.address || undefined,
-    entryDate: parseDate(data.entry_date)!,
-    status: data.status as Member['status'],
-    ministries: data.ministries || [],
-    observations: data.observations || undefined,
-    createdAt: parseDate(data.created_at)!,
-    updatedAt: parseDate(data.updated_at)!,
-  }
+  return mapMember(data)
 }
 
 export async function deleteMember(id: string) {
-  const { error } = await supabase
-    .from('members')
-    .delete()
-    .eq('id', id)
+  const { error } = await supabase.from('members').delete().eq('id', id)
 
   if (error) throw error
 }

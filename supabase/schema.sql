@@ -13,8 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'tesouraria', 'secretaria', 'pastor', 'auditor')),
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'tesouraria', 'secretaria', 'pastor', 'auditor', 'membro')),
     avatar TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_login TIMESTAMP WITH TIME ZONE
 );
@@ -36,6 +37,20 @@ CREATE TABLE IF NOT EXISTS user_passwords (
 );
 
 -- ============================================
+-- TABELA: password_reset_requests (Pedidos de Recuperação de Senha)
+-- ============================================
+-- O usuário pede a recuperação na tela de login e um administrador
+-- define uma senha provisória em Configurações.
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'concluido', 'recusado')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_requests_status ON password_reset_requests(status);
+
+-- ============================================
 -- TABELA: members (Membros da Igreja)
 -- ============================================
 CREATE TABLE IF NOT EXISTS members (
@@ -48,6 +63,8 @@ CREATE TABLE IF NOT EXISTS members (
     entry_date DATE NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('ativo', 'inativo', 'visitante')),
     ministries TEXT[] DEFAULT '{}',
+    baptized BOOLEAN NOT NULL DEFAULT false,
+    member_role VARCHAR(20) NOT NULL DEFAULT 'membro' CHECK (member_role IN ('membro', 'lider', 'voluntario')),
     observations TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -128,7 +145,12 @@ CREATE TABLE IF NOT EXISTS events (
     start_date DATE NOT NULL,
     end_date DATE,
     status VARCHAR(20) NOT NULL DEFAULT 'planejado' CHECK (status IN ('planejado', 'em_andamento', 'finalizado', 'cancelado')),
-    cash_box_id UUID REFERENCES cash_boxes(id) ON DELETE SET NULL,
+    event_type VARCHAR(20) NOT NULL DEFAULT 'outro' CHECK (event_type IN ('culto', 'reuniao', 'retiro', 'conferencia', 'outro')),
+    start_time VARCHAR(5),
+    location VARCHAR(255),
+    capacity INTEGER CHECK (capacity IS NULL OR capacity >= 0),
+    attendance INTEGER NOT NULL DEFAULT 0 CHECK (attendance >= 0),
+    cash_box_id UUID, -- FK adicionada depois da criação de cash_boxes
     total_income DECIMAL(10, 2) DEFAULT 0,
     total_expense DECIMAL(10, 2) DEFAULT 0,
     observations TEXT,
@@ -140,6 +162,27 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_start_date ON events(start_date);
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 CREATE INDEX IF NOT EXISTS idx_events_cash_box_id ON events(cash_box_id);
+
+-- ============================================
+-- TABELA: tithes (Dízimos e Ofertas por membro)
+-- ============================================
+CREATE TABLE IF NOT EXISTS tithes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    member_id UUID REFERENCES members(id) ON DELETE SET NULL,
+    member_name VARCHAR(255) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('dizimo', 'oferta')),
+    amount DECIMAL(10, 2) NOT NULL CHECK (amount > 0),
+    date DATE NOT NULL,
+    payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('dinheiro', 'pix', 'cartao', 'transferencia', 'outros')),
+    status VARCHAR(20) NOT NULL DEFAULT 'confirmado' CHECK (status IN ('confirmado', 'pendente')),
+    observations TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tithes_date ON tithes(date);
+CREATE INDEX IF NOT EXISTS idx_tithes_member_id ON tithes(member_id);
+CREATE INDEX IF NOT EXISTS idx_tithes_type ON tithes(type);
 
 -- ============================================
 -- TABELA: cash_boxes (Caixas)
@@ -172,7 +215,7 @@ CREATE TABLE IF NOT EXISTS cash_transactions (
     payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('dinheiro', 'pix', 'cartao', 'transferencia', 'outros')),
     date DATE NOT NULL,
     related_service_id UUID REFERENCES services(id) ON DELETE SET NULL,
-    related_bill_id UUID REFERENCES bills_payable(id) ON DELETE SET NULL,
+    related_bill_id UUID, -- FK adicionada depois da criação de bills_payable
     related_transfer_id UUID, -- Auto-referência para transferências
     responsible_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     responsible_name VARCHAR(255) NOT NULL,
@@ -267,6 +310,21 @@ CREATE INDEX IF NOT EXISTS idx_bills_payable_event_id ON bills_payable(event_id)
 CREATE INDEX IF NOT EXISTS idx_bills_payable_category ON bills_payable(category);
 
 -- ============================================
+-- CHAVES ESTRANGEIRAS ENTRE TABELAS CRIADAS EM ORDEM INVERSA
+-- ============================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'events_cash_box_id_fkey') THEN
+        ALTER TABLE events ADD CONSTRAINT events_cash_box_id_fkey
+            FOREIGN KEY (cash_box_id) REFERENCES cash_boxes(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cash_transactions_related_bill_id_fkey') THEN
+        ALTER TABLE cash_transactions ADD CONSTRAINT cash_transactions_related_bill_id_fkey
+            FOREIGN KEY (related_bill_id) REFERENCES bills_payable(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- ============================================
 -- FUNÇÕES E TRIGGERS
 -- ============================================
 
@@ -288,6 +346,8 @@ DROP TRIGGER IF EXISTS update_cash_boxes_updated_at ON cash_boxes;
 DROP TRIGGER IF EXISTS update_suppliers_updated_at ON suppliers;
 DROP TRIGGER IF EXISTS update_bills_payable_updated_at ON bills_payable;
 DROP TRIGGER IF EXISTS update_user_passwords_updated_at ON user_passwords;
+DROP TRIGGER IF EXISTS update_tithes_updated_at ON tithes;
+DROP TRIGGER IF EXISTS update_bill_categories_updated_at ON bill_categories;
 
 -- Triggers para atualizar updated_at
 CREATE TRIGGER update_members_updated_at BEFORE UPDATE ON members
@@ -317,6 +377,9 @@ CREATE TRIGGER update_bill_categories_updated_at BEFORE UPDATE ON bill_categorie
 CREATE TRIGGER update_user_passwords_updated_at BEFORE UPDATE ON user_passwords
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_tithes_updated_at BEFORE UPDATE ON tithes
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================
 -- COMENTÁRIOS NAS TABELAS
 -- ============================================
@@ -333,6 +396,8 @@ COMMENT ON TABLE cash_transactions IS 'Todas as transações financeiras do sist
 COMMENT ON TABLE suppliers IS 'Fornecedores e prestadores de serviço';
 COMMENT ON TABLE bill_categories IS 'Categorias personalizáveis para contas a pagar';
 COMMENT ON TABLE bills_payable IS 'Contas a pagar da igreja';
+COMMENT ON TABLE tithes IS 'Dízimos e ofertas registrados por membro';
+COMMENT ON TABLE password_reset_requests IS 'Pedidos de recuperação de senha, liberados por um administrador';
 
 -- ============================================
 -- FIM DO SCHEMA

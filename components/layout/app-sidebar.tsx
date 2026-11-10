@@ -1,21 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Church,
   Wallet,
   Receipt,
   Users,
-  UserCog,
   FileText,
-  History,
-  Calendar,
+  CalendarDays,
+  BookOpen,
+  HandCoins,
   Settings,
   LogOut,
-  ChevronDown,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react"
 
 import {
@@ -29,198 +29,115 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Button } from "@/components/ui/button"
 import { roleLabels } from "@/lib/constants"
-import { getCurrentUser, clearUserSession } from "@/lib/auth"
-import type { User } from "@/lib/types"
+import { useAuth } from "@/hooks/use-auth"
+import type { Module } from "@/lib/permissions"
 
-const mainMenuItems = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Cultos",
-    url: "/cultos",
-    icon: Church,
-  },
-  {
-    title: "Caixa",
-    url: "/caixa",
-    icon: Wallet,
-  },
-  {
-    title: "Despesas",
-    url: "/contas-a-pagar",
-    icon: Receipt,
-  },
-  {
-    title: "Eventos",
-    url: "/eventos",
-    icon: Calendar,
-  },
-  {
-    title: "Membros",
-    url: "/membros",
-    icon: Users,
-  },
-]
+interface MenuItem {
+  title: string
+  url: string
+  icon: LucideIcon
+  module: Module
+}
 
-const adminMenuItems = [
+const menuGroups: { label: string; items: MenuItem[] }[] = [
   {
-    title: "Usuários",
-    url: "/usuarios",
-    icon: UserCog,
+    label: "Comunidade",
+    items: [
+      { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
+      { title: "Membros", url: "/membros", icon: Users, module: "membros" },
+      { title: "Eventos", url: "/eventos", icon: CalendarDays, module: "eventos" },
+      { title: "Agenda", url: "/agenda", icon: BookOpen, module: "agenda" },
+      { title: "Dízimos", url: "/dizimos", icon: HandCoins, module: "dizimos" },
+    ],
   },
   {
-    title: "Relatórios",
-    url: "/relatorios",
-    icon: FileText,
+    label: "Financeiro",
+    items: [
+      { title: "Cultos", url: "/cultos", icon: Church, module: "cultos" },
+      { title: "Caixa", url: "/caixa", icon: Wallet, module: "caixa" },
+      { title: "Despesas", url: "/contas-a-pagar", icon: Receipt, module: "contas-a-pagar" },
+    ],
   },
   {
-    title: "Auditoria",
-    url: "/auditoria",
-    icon: History,
-  },
-  {
-    title: "Configurações",
-    url: "/configuracoes",
-    icon: Settings,
+    label: "Sistema",
+    items: [
+      { title: "Relatório", url: "/relatorio", icon: FileText, module: "relatorio" },
+      { title: "Configurações", url: "/configuracoes", icon: Settings, module: "configuracoes" },
+    ],
   },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const { user, logout, can } = useAuth()
 
-  useEffect(() => {
-    const user = getCurrentUser()
-    setCurrentUser(user)
-  }, [])
-
-  const isActive = (url: string) => {
-    if (url === "/dashboard") return pathname === "/dashboard"
-    return pathname.startsWith(url)
-  }
-
-  const handleLogout = () => {
-    clearUserSession()
-    router.push("/login")
-    router.refresh()
-  }
-
-  // Se não houver usuário, mostra dados padrão
-  const user = currentUser || {
-    name: "Usuário",
-    role: "admin" as const,
-    avatar: undefined,
-  }
+  const isActive = (url: string) => pathname === url || pathname.startsWith(`${url}/`)
 
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-3 px-2 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-            LC
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground">
+            <Church className="h-5 w-5" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold">Livre Sou em Cristo</span>
-            <span className="text-xs text-muted-foreground">Gestão</span>
+            <span className="text-sm font-semibold">Igreja Manager</span>
+            <span className="text-xs text-sidebar-foreground/70">Livre Sou em Cristo</span>
           </div>
         </div>
+        {user && (
+          <div className="px-2 pb-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/60">Logado como</p>
+            <p className="truncate text-sm font-semibold">{user.name}</p>
+            <p className="text-xs text-sidebar-foreground/70">{roleLabels[user.role]}</p>
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainMenuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <Link href={item.url}>
-                      <item.icon className="h-5 w-5" />
-                      <span className="font-medium">{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Administração</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {adminMenuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {menuGroups.map((group) => {
+          const visible = group.items.filter((item) => can(item.module))
+          if (visible.length === 0) return null
+          return (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visible.map((item) => (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                        <Link href={item.url}>
+                          <item.icon className="h-5 w-5" />
+                          <span className="font-medium">{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton className="h-auto py-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.avatar || "/placeholder.svg"} />
-                    <AvatarFallback>
-                      {user.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col items-start text-left">
-                    <span className="text-sm font-medium">{user.name}</span>
-                    <span className="text-xs text-muted-foreground">{roleLabels[user.role]}</span>
-                  </div>
-                  <ChevronDown className="ml-auto h-4 w-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem asChild>
-                  <Link href="/perfil">Meu Perfil</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/configuracoes">Configurações</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <SidebarMenuButton asChild isActive={isActive("/perfil")}>
+              <Link href="/perfil">
+                <UserRound className="h-5 w-5" />
+                <span className="font-medium">Meu Perfil</span>
+              </Link>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <Button variant="destructive" className="w-full" onClick={logout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          Sair
+        </Button>
       </SidebarFooter>
     </Sidebar>
   )

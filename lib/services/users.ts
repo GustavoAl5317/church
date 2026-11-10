@@ -1,18 +1,79 @@
 import { supabase, parseDate, isSupabaseConfigured } from '@/lib/supabase'
-import type { User } from '@/lib/types'
+import type { PasswordResetRequest, User } from '@/lib/types'
 import { hashPassword, verifyPassword } from '@/lib/crypto'
 
-// Credenciais padrão do admin (pode ser alterado depois)
-const DEFAULT_ADMIN_EMAIL = 'admin@livresouemcristo.com.br'
+// Administrador criado na primeira execução. Troque a senha em "Meu Perfil" após o primeiro acesso.
+export const DEFAULT_ADMIN_EMAIL = 'admin@livresouemcristo.com.br'
 const DEFAULT_ADMIN_PASSWORD = 'admin123'
 const DEFAULT_ADMIN_NAME = 'Administrador'
 
-// Armazena hashes de senha em memória (em produção, usar banco de dados ou tabela separada)
-// TODO: Criar tabela user_passwords no banco de dados para armazenar hashes
-const passwordHashes = new Map<string, string>()
+export const MIN_PASSWORD_LENGTH = 6
+
+type UserRow = {
+  id: string
+  name: string
+  email: string
+  role: string
+  avatar: string | null
+  is_active?: boolean | null
+  created_at: string
+  last_login: string | null
+}
+
+function mapUser(row: UserRow): User {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role as User['role'],
+    avatar: row.avatar || undefined,
+    // Bancos que ainda não rodaram a migração não têm a coluna: considera ativo
+    isActive: row.is_active !== false,
+    createdAt: parseDate(row.created_at)!,
+    lastLogin: parseDate(row.last_login) || undefined,
+  }
+}
+
+function requireSupabase() {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase não está configurado')
+  }
+}
+
+function normalizeEmail(email: string) {
+  return email.toLowerCase().trim()
+}
+
+async function getPasswordHash(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('user_passwords')
+    .select('password_hash')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data?.password_hash ?? null
+}
 
 /**
- * Garante que existe um usuário admin padrão no banco de dados
+ * Define (ou troca) a senha de um usuário, salvando apenas o hash.
+ */
+export async function setUserPassword(userId: string, newPassword: string): Promise<void> {
+  requireSupabase()
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`)
+  }
+
+  const passwordHash = await hashPassword(newPassword)
+  const { error } = await supabase
+    .from('user_passwords')
+    .upsert({ user_id: userId, password_hash: passwordHash, updated_at: new Date().toISOString() })
+
+  if (error) throw error
+}
+
+/**
+ * Garante que existe um usuário admin padrão com senha cadastrada
  */
 export async function ensureDefaultAdmin() {
   if (!isSupabaseConfigured) {
@@ -21,64 +82,37 @@ export async function ensureDefaultAdmin() {
   }
 
   try {
-    // Verifica se já existe um usuário admin
-    const { data: existingAdmin, error: checkError } = await supabase
+    let { data: admin, error } = await supabase
       .from('users')
-      .select('id, name, email')
+      .select('id')
       .eq('email', DEFAULT_ADMIN_EMAIL)
       .maybeSingle()
 
-    if (checkError) {
-      console.error('❌ Erro ao verificar usuário admin:', checkError)
-      return null
-    }
+    if (error) throw error
 
-    if (existingAdmin) {
-      console.log('✅ Usuário admin já existe:', existingAdmin.id)
-      return {
-        id: existingAdmin.id,
-        name: existingAdmin.name,
-        email: existingAdmin.email,
+    if (!admin) {
+      const created = await supabase
+        .from('users')
+        .insert({ name: DEFAULT_ADMIN_NAME, email: DEFAULT_ADMIN_EMAIL, role: 'admin' })
+        .select('id')
+        .single()
+      if (created.error?.code === '23505') {
+        // Outra aba (ou chamada simultânea) criou o admin ao mesmo tempo
+        const existing = await supabase.from('users').select('id').eq('email', DEFAULT_ADMIN_EMAIL).single()
+        if (existing.error) throw existing.error
+        admin = existing.data
+      } else if (created.error) {
+        throw created.error
+      } else {
+        admin = created.data
       }
     }
 
-    // Cria o usuário admin padrão
-    console.log('⚠️ Criando usuário admin padrão...')
-    const { data: newAdmin, error: createError } = await supabase
-      .from('users')
-      .insert({
-        name: DEFAULT_ADMIN_NAME,
-        email: DEFAULT_ADMIN_EMAIL,
-        role: 'admin',
-      } as any)
-      .select('id, name, email')
-      .single()
-
-    if (createError) {
-      console.error('❌ Erro ao criar usuário admin:', createError)
-      console.error('❌ Código:', createError.code)
-      console.error('❌ Mensagem:', createError.message)
-      console.error('❌ Detalhes:', createError.details)
-      return null
+    if (!(await getPasswordHash(admin.id))) {
+      await setUserPassword(admin.id, DEFAULT_ADMIN_PASSWORD)
     }
 
-    if (!newAdmin) {
-      console.error('❌ Nenhum dado retornado ao criar usuário admin')
-      return null
-    }
-
-    // Cria hash da senha padrão
-    const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD)
-    passwordHashes.set(newAdmin.id, passwordHash)
-
-    console.log('✅ Usuário admin criado com sucesso:', newAdmin.id)
-    console.log(`📧 Email: ${DEFAULT_ADMIN_EMAIL}`)
-    console.log(`🔑 Senha: ${DEFAULT_ADMIN_PASSWORD}`)
-    return {
-      id: newAdmin.id,
-      name: newAdmin.name,
-      email: newAdmin.email,
-    }
+    return admin
   } catch (error) {
     console.error('❌ Erro ao garantir usuário admin:', error)
     return null
@@ -86,21 +120,21 @@ export async function ensureDefaultAdmin() {
 }
 
 /**
- * Autentica um usuário usando email e senha com hash seguro
+ * Autentica um usuário usando email e senha.
+ * Retorna null para credenciais inválidas ou usuário inativo.
  */
 export async function authenticateUser(email: string, password: string): Promise<User | null> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não está configurado')
+  requireSupabase()
+
+  // No primeiro acesso, o admin padrão pode ainda não ter sido criado
+  if (normalizeEmail(email) === DEFAULT_ADMIN_EMAIL) {
+    await ensureDefaultAdmin()
   }
 
-  // Garante que o admin padrão existe
-  await ensureDefaultAdmin()
-
-  // Busca o usuário pelo email
-  const { data: user, error } = await supabase
+  const { data: row, error } = await supabase
     .from('users')
     .select('*')
-    .eq('email', email.toLowerCase().trim())
+    .eq('email', normalizeEmail(email))
     .maybeSingle()
 
   if (error) {
@@ -108,235 +142,220 @@ export async function authenticateUser(email: string, password: string): Promise
     throw new Error('Erro ao autenticar usuário')
   }
 
-  if (!user) {
+  if (!row) return null
+
+  const storedHash = await getPasswordHash(row.id)
+  if (!storedHash || !(await verifyPassword(password, storedHash))) {
     return null
   }
 
-  // Verifica senha usando hash
-  const storedHash = passwordHashes.get(user.id)
-  let passwordValid = false
-
-  if (storedHash) {
-    // Verifica usando hash armazenado
-    passwordValid = await verifyPassword(password, storedHash)
-  } else {
-    // Fallback: para compatibilidade com usuários antigos ou admin padrão
-    // Se não há hash, verifica senha padrão do admin
-    if (user.email === DEFAULT_ADMIN_EMAIL) {
-      passwordValid = password === DEFAULT_ADMIN_PASSWORD
-      // Se a senha está correta, cria e armazena o hash
-      if (passwordValid) {
-        const newHash = await hashPassword(password)
-        passwordHashes.set(user.id, newHash)
-      }
-    } else {
-      // Para outros usuários sem hash, rejeita (segurança)
-      return null
-    }
+  const user = mapUser(row)
+  if (!user.isActive) {
+    throw new Error('Este usuário está inativo. Fale com o administrador.')
   }
 
-  if (!passwordValid) {
-    return null
-  }
+  await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id)
 
-  // Atualiza o último login
-  await supabase
-    .from('users')
-    .update({ last_login: new Date().toISOString() })
-    .eq('id', user.id)
+  return user
+}
 
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role as User['role'],
-    avatar: user.avatar || undefined,
-    createdAt: parseDate(user.created_at)!,
-    lastLogin: parseDate(user.last_login) || undefined,
+/**
+ * Troca a senha do próprio usuário, conferindo a senha atual.
+ */
+export async function changeOwnPassword(userId: string, currentPassword: string, newPassword: string) {
+  requireSupabase()
+  const storedHash = await getPasswordHash(userId)
+  if (!storedHash || !(await verifyPassword(currentPassword, storedHash))) {
+    throw new Error('A senha atual está incorreta.')
   }
+  await setUserPassword(userId, newPassword)
 }
 
 /**
  * Busca um usuário pelo ID
  */
 export async function getUserById(id: string): Promise<User | null> {
-  if (!isSupabaseConfigured) {
-    return null
-  }
+  if (!isSupabaseConfigured) return null
 
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
+  const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle()
 
   if (error) throw error
-  if (!data) return null
-
-  return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    role: data.role as User['role'],
-    avatar: data.avatar || undefined,
-    createdAt: parseDate(data.created_at)!,
-    lastLogin: parseDate(data.last_login) || undefined,
-  }
-}
-
-/**
- * Busca um usuário pelo email
- */
-export async function getUserByEmail(email: string): Promise<User | null> {
-  if (!isSupabaseConfigured) {
-    return null
-  }
-
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase().trim())
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) return null
-
-  return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    role: data.role as User['role'],
-    avatar: data.avatar || undefined,
-    createdAt: parseDate(data.created_at)!,
-    lastLogin: parseDate(data.last_login) || undefined,
-  }
+  return data ? mapUser(data) : null
 }
 
 /**
  * Lista todos os usuários
  */
 export async function getUsers(): Promise<User[]> {
-  if (!isSupabaseConfigured) {
-    return []
-  }
+  if (!isSupabaseConfigured) return []
 
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .order('name')
+  const { data, error } = await supabase.from('users').select('*').order('name')
 
   if (error) throw error
-  if (!data) return []
-
-  return data.map((user): User => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role as User['role'],
-    avatar: user.avatar || undefined,
-    createdAt: parseDate(user.created_at)!,
-    lastLogin: parseDate(user.last_login) || undefined,
-  }))
+  return (data || []).map(mapUser)
 }
 
 /**
  * Cria um novo usuário com senha
  */
 export async function createUser(
-  user: Omit<User, 'id' | 'createdAt' | 'lastLogin'>,
-  password?: string
+  user: Pick<User, 'name' | 'email' | 'role'> & { isActive?: boolean },
+  password: string,
 ): Promise<User> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não está configurado')
+  requireSupabase()
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`)
   }
 
   const { data, error } = await supabase
     .from('users')
     .insert({
-      name: user.name,
-      email: user.email.toLowerCase().trim(),
+      name: user.name.trim(),
+      email: normalizeEmail(user.email),
       role: user.role,
-      avatar: user.avatar || null,
-    } as any)
+      is_active: user.isActive ?? true,
+    })
     .select()
     .single()
 
-  if (error) throw error
-  if (!data) throw new Error('Failed to create user')
-
-  // Se senha fornecida, cria hash e armazena
-  if (password) {
-    const passwordHash = await hashPassword(password)
-    passwordHashes.set(data.id, passwordHash)
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe um usuário com este email.')
+    throw error
   }
 
-  return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    role: data.role as User['role'],
-    avatar: data.avatar || undefined,
-    createdAt: parseDate(data.created_at)!,
-    lastLogin: parseDate(data.last_login) || undefined,
+  try {
+    await setUserPassword(data.id, password)
+  } catch (passwordError) {
+    // Sem senha o usuário não conseguiria entrar: desfaz o cadastro
+    await supabase.from('users').delete().eq('id', data.id)
+    throw passwordError
   }
-}
 
-/**
- * Atualiza a senha de um usuário
- */
-export async function updateUserPassword(userId: string, newPassword: string): Promise<void> {
-  const passwordHash = await hashPassword(newPassword)
-  passwordHashes.set(userId, passwordHash)
+  return mapUser(data)
 }
 
 /**
  * Atualiza um usuário
  */
 export async function updateUser(id: string, updates: Partial<User>): Promise<User> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não está configurado')
-  }
+  requireSupabase()
 
-  const updateData: any = {}
-  
-  if (updates.name !== undefined) updateData.name = updates.name
-  if (updates.email !== undefined) updateData.email = updates.email.toLowerCase().trim()
+  const updateData: Record<string, unknown> = {}
+  if (updates.name !== undefined) updateData.name = updates.name.trim()
+  if (updates.email !== undefined) updateData.email = normalizeEmail(updates.email)
   if (updates.role !== undefined) updateData.role = updates.role
   if (updates.avatar !== undefined) updateData.avatar = updates.avatar || null
+  if (updates.isActive !== undefined) updateData.is_active = updates.isActive
 
-  const { data, error } = await supabase
-    .from('users')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from('users').update(updateData).eq('id', id).select().single()
 
-  if (error) throw error
-  if (!data) throw new Error('User not found')
-
-  return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    role: data.role as User['role'],
-    avatar: data.avatar || undefined,
-    createdAt: parseDate(data.created_at)!,
-    lastLogin: parseDate(data.last_login) || undefined,
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe um usuário com este email.')
+    throw error
   }
+  return mapUser(data)
 }
 
 /**
- * Deleta um usuário
+ * Remove um usuário
  */
 export async function deleteUser(id: string): Promise<void> {
-  if (!isSupabaseConfigured) {
-    throw new Error('Supabase não está configurado')
-  }
+  requireSupabase()
 
-  const { error } = await supabase
+  const { error } = await supabase.from('users').delete().eq('id', id)
+
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('Este usuário tem movimentações registradas e não pode ser removido. Marque-o como inativo.')
+    }
+    throw error
+  }
+}
+
+// ============================================
+// Recuperação de senha
+// ============================================
+
+/**
+ * Registra um pedido de recuperação de senha.
+ * Não informa se o email existe, para não expor quem tem cadastro.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  requireSupabase()
+
+  const { data: user, error } = await supabase
     .from('users')
-    .delete()
-    .eq('id', id)
+    .select('id, is_active')
+    .eq('email', normalizeEmail(email))
+    .maybeSingle()
+
+  if (error) throw error
+  if (!user || user.is_active === false) return
+
+  const { data: pending, error: pendingError } = await supabase
+    .from('password_reset_requests')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'pendente')
+    .limit(1)
+
+  if (pendingError) throw pendingError
+  if (pending && pending.length > 0) return
+
+  const { error: insertError } = await supabase.from('password_reset_requests').insert({ user_id: user.id })
+  if (insertError) throw insertError
+}
+
+/**
+ * Lista os pedidos de recuperação de senha pendentes
+ */
+export async function getPendingPasswordResets(): Promise<PasswordResetRequest[]> {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('password_reset_requests')
+    .select('*')
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  if (!data || data.length === 0) return []
+
+  const users = await getUsers()
+  const byId = new Map(users.map((u) => [u.id, u]))
+
+  return data.map((request) => {
+    const user = byId.get(request.user_id)
+    return {
+      id: request.id,
+      userId: request.user_id,
+      userName: user?.name ?? 'Usuário removido',
+      userEmail: user?.email ?? '-',
+      status: request.status,
+      createdAt: parseDate(request.created_at)!,
+      resolvedAt: parseDate(request.resolved_at) || undefined,
+    }
+  })
+}
+
+/**
+ * Conclui um pedido definindo uma senha provisória para o usuário
+ */
+export async function resolvePasswordReset(request: PasswordResetRequest, temporaryPassword: string) {
+  await setUserPassword(request.userId, temporaryPassword)
+  await closePasswordReset(request.id, 'concluido')
+}
+
+/**
+ * Fecha um pedido sem trocar a senha
+ */
+export async function closePasswordReset(requestId: string, status: 'concluido' | 'recusado' = 'recusado') {
+  requireSupabase()
+  const { error } = await supabase
+    .from('password_reset_requests')
+    .update({ status, resolved_at: new Date().toISOString() })
+    .eq('id', requestId)
 
   if (error) throw error
 }

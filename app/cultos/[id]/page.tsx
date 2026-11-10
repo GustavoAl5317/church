@@ -92,7 +92,7 @@ export default function CultoDetailPage({ params }: { params: Promise<{ id: stri
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="print-hidden flex gap-2">
             {service.status === "agendado" && (
               <>
                 <Button variant="outline" asChild>
@@ -110,11 +110,9 @@ export default function CultoDetailPage({ params }: { params: Promise<{ id: stri
               </>
             )}
             {service.status === "finalizado" && (
-              <Button variant="outline" asChild>
-                <Link href={`/cultos/${id}/relatorio`}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  Exportar Relatório
-                </Link>
+              <Button variant="outline" onClick={() => window.print()}>
+                <FileText className="mr-2 h-4 w-4" />
+                Exportar Relatório (PDF)
               </Button>
             )}
           </div>

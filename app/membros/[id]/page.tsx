@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Edit, Mail, Phone, MapPin, Calendar, Users, History, Loader2 } from "lucide-react"
+import { ArrowLeft, Edit, Mail, Phone, MapPin, Calendar, Users, History, Loader2, Droplets } from "lucide-react"
 import { getMember } from "@/lib/services/members"
 import type { Member } from "@/lib/types"
 import { formatDate } from "@/lib/utils/format"
+import { memberRoleLabels } from "@/lib/constants"
 import { toast } from "sonner"
 
 const statusConfig = {
@@ -92,6 +93,7 @@ export default function MembroDetailPage({ params }: { params: Promise<{ id: str
               <h1 className="text-3xl font-bold tracking-tight">{member.name}</h1>
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                <Badge variant="secondary">{memberRoleLabels[member.memberRole]}</Badge>
                 {member.ministries.length > 0 && (
                   <>
                     <span className="text-muted-foreground">•</span>
@@ -183,6 +185,15 @@ export default function MembroDetailPage({ params }: { params: Promise<{ id: str
                     <div>
                       <p className="text-sm text-muted-foreground">Data de Entrada</p>
                       <p className="font-medium">{formatDate(member.entryDate, "dd 'de' MMMM 'de' yyyy")}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <Droplets className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Batizado</p>
+                      <p className="font-medium">{member.baptized ? "Sim" : "Não"}</p>
                     </div>
                   </div>
                   {member.ministries.length > 0 && (

@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { Upload, FileText, AlertCircle, CheckCircle, Download, Loader2 } from "lucide-react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,36 +12,170 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Upload, FileText, AlertCircle, CheckCircle, Download, Loader2 } from "lucide-react"
+import { createMember, type MemberInput } from "@/lib/services/members"
+import { parseBrazilianDate, parseCsv } from "@/lib/utils/csv"
+import type { MemberRole, MemberStatus } from "@/lib/types"
 
-// Sample preview data
-const previewData = [
-  { name: "João Santos", email: "joao@email.com", phone: "(11) 99999-1111", status: "valid" },
-  { name: "Maria Silva", email: "maria@email.com", phone: "(11) 99999-2222", status: "valid" },
-  { name: "", email: "invalido@email.com", phone: "(11) 99999-3333", status: "error" },
-  { name: "Pedro Costa", email: "pedro@email.com", phone: "", status: "warning" },
-]
+const COLUMNS = [
+  "nome",
+  "email",
+  "telefone",
+  "data_nascimento",
+  "membro_desde",
+  "endereco",
+  "status",
+  "funcao",
+  "batizado",
+  "ministerios",
+] as const
+
+const TEMPLATE =
+  "﻿" +
+  COLUMNS.join(";") +
+  "\nMaria Silva;maria@email.com;(11) 99999-1111;15/03/1985;10/01/2020;Rua das Flores, 10;ativo;lider;sim;Louvor, Intercessão\n" +
+  "João Santos;;(11) 98888-2222;;;;visitante;membro;não;\n"
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024
+
+interface PreviewRow {
+  line: number
+  data: MemberInput
+  errors: string[]
+  warnings: string[]
+}
+
+function normalizeKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, "_")
+}
+
+function buildRows(text: string): PreviewRow[] {
+  const [header, ...lines] = parseCsv(text)
+  if (!header) return []
+  const index = new Map(header.map((h, i) => [normalizeKey(h), i]))
+  const get = (row: string[], key: string) => (row[index.get(key) ?? -1] ?? "").trim()
+
+  return lines.map((row, i) => {
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    const name = get(row, "nome")
+    if (!name) errors.push("Nome em branco")
+
+    const email = get(row, "email")
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) warnings.push("Email inválido (será ignorado)")
+
+    const parseDate = (key: string, label: string) => {
+      const raw = get(row, key)
+      if (!raw) return undefined
+      const date = parseBrazilianDate(raw)
+      if (!date) warnings.push(`${label} inválida (será ignorada)`)
+      return date
+    }
+    const birthDate = parseDate("data_nascimento", "Data de nascimento")
+    const entryDate = parseDate("membro_desde", "Data de entrada") ?? new Date()
+
+    const rawStatus = normalizeKey(get(row, "status"))
+    let status: MemberStatus = "ativo"
+    if (rawStatus === "inativo" || rawStatus === "visitante" || rawStatus === "ativo") status = rawStatus
+    else if (rawStatus) warnings.push(`Status "${get(row, "status")}" desconhecido, usado "ativo"`)
+
+    const rawRole = normalizeKey(get(row, "funcao"))
+    let memberRole: MemberRole = "membro"
+    if (rawRole === "lider" || rawRole === "voluntario" || rawRole === "membro") memberRole = rawRole
+    else if (rawRole) warnings.push(`Função "${get(row, "funcao")}" desconhecida, usado "membro"`)
+
+    const baptized = ["sim", "s", "true", "1", "x"].includes(normalizeKey(get(row, "batizado")))
+    const ministries = get(row, "ministerios")
+      .split(/[,|]/)
+      .map((m) => m.trim())
+      .filter(Boolean)
+
+    return {
+      line: i + 2,
+      errors,
+      warnings,
+      data: {
+        name,
+        email: warnings.some((w) => w.startsWith("Email")) ? undefined : email || undefined,
+        phone: get(row, "telefone") || undefined,
+        address: get(row, "endereco") || undefined,
+        birthDate,
+        entryDate,
+        status,
+        memberRole,
+        baptized,
+        ministries,
+        observations: undefined,
+      },
+    }
+  })
+}
 
 export default function ImportarMembrosPage() {
   const router = useRouter()
-  const [file, setFile] = useState<File | null>(null)
+  const [fileName, setFileName] = useState("")
+  const [rows, setRows] = useState<PreviewRow[]>([])
+  const [fileError, setFileError] = useState("")
   const [step, setStep] = useState<"upload" | "preview" | "importing" | "done">("upload")
   const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState({ imported: 0, failed: [] as string[] })
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (selectedFile) {
-      setFile(selectedFile)
-      setStep("preview")
+  const validRows = rows.filter((r) => r.errors.length === 0)
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setFileError("")
+
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError("O arquivo passa de 5MB.")
+      return
     }
+
+    const parsed = buildRows(await file.text())
+    if (parsed.length === 0) {
+      setFileError("Não encontramos nenhum membro no arquivo. Confira se a primeira linha tem os nomes das colunas.")
+      return
+    }
+    setFileName(file.name)
+    setRows(parsed)
+    setStep("preview")
+  }
+
+  const downloadTemplate = () => {
+    const url = URL.createObjectURL(new Blob([TEMPLATE], { type: "text/csv;charset=utf-8" }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "modelo-membros.csv"
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleImport = async () => {
     setStep("importing")
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      setProgress(i)
+    setProgress(0)
+    let imported = 0
+    const failed: string[] = []
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i]
+      try {
+        await createMember(row.data)
+        imported++
+      } catch (error) {
+        console.error(`Erro ao importar linha ${row.line}:`, error)
+        failed.push(`Linha ${row.line} (${row.data.name})`)
+      }
+      setProgress(Math.round(((i + 1) / validRows.length) * 100))
     }
+
+    setResult({ imported, failed })
     setStep("done")
   }
 
@@ -55,15 +190,21 @@ export default function ImportarMembrosPage() {
         {step === "upload" && (
           <Card>
             <CardHeader>
-              <CardTitle>Upload do Arquivo</CardTitle>
+              <CardTitle>Arquivo</CardTitle>
               <CardDescription>Selecione um arquivo CSV com os dados dos membros</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="border-2 border-dashed rounded-lg p-12 text-center">
-                <input type="file" accept=".csv" onChange={handleFileSelect} className="hidden" id="csv-upload" />
+              {fileError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{fileError}</AlertDescription>
+                </Alert>
+              )}
+              <div className="rounded-lg border-2 border-dashed p-12 text-center">
+                <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" id="csv-upload" />
                 <label htmlFor="csv-upload" className="cursor-pointer">
-                  <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium mb-1">Clique para selecionar ou arraste o arquivo</p>
+                  <Upload className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                  <p className="mb-1 text-lg font-medium">Clique para selecionar o arquivo</p>
                   <p className="text-sm text-muted-foreground">Apenas arquivos .csv até 5MB</p>
                 </label>
               </div>
@@ -72,10 +213,11 @@ export default function ImportarMembrosPage() {
                 <FileText className="h-4 w-4" />
                 <AlertTitle>Formato esperado</AlertTitle>
                 <AlertDescription>
-                  O arquivo deve conter as colunas: nome, email, telefone, data_nascimento, endereco, status,
-                  ministerios
-                  <br />
-                  <Button variant="link" className="p-0 h-auto text-primary">
+                  <p>
+                    Colunas: {COLUMNS.join(", ")}. Só <strong>nome</strong> é obrigatório. Datas no formato dd/mm/aaaa,
+                    status ativo/inativo/visitante, função membro/líder/voluntário e batizado sim/não.
+                  </p>
+                  <Button variant="link" className="h-auto p-0 text-primary" onClick={downloadTemplate}>
                     <Download className="mr-1 h-3 w-3" />
                     Baixar modelo de CSV
                   </Button>
@@ -86,100 +228,90 @@ export default function ImportarMembrosPage() {
         )}
 
         {step === "preview" && (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Prévia da Importação</CardTitle>
-                <CardDescription>
-                  Arquivo: {file?.name} • {previewData.length} registros encontrados
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4 mb-4">
-                  <Badge variant="default" className="gap-1">
-                    <CheckCircle className="h-3 w-3" />
-                    {previewData.filter((d) => d.status === "valid").length} válidos
-                  </Badge>
-                  <Badge variant="secondary" className="gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {previewData.filter((d) => d.status === "warning").length} com avisos
-                  </Badge>
-                  <Badge variant="destructive" className="gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {previewData.filter((d) => d.status === "error").length} com erros
-                  </Badge>
-                </div>
-
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Telefone</TableHead>
+          <Card>
+            <CardHeader>
+              <CardTitle>Prévia: {fileName}</CardTitle>
+              <CardDescription>
+                {validRows.length} de {rows.length} linhas serão importadas
+                {rows.length - validRows.length > 0 && ` (${rows.length - validRows.length} com erro serão ignoradas)`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="max-h-[420px] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Linha</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Situação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow key={row.line}>
+                        <TableCell>{row.line}</TableCell>
+                        <TableCell>{row.data.name || "-"}</TableCell>
+                        <TableCell>{row.data.email || "-"}</TableCell>
+                        <TableCell>{row.data.phone || "-"}</TableCell>
+                        <TableCell>
+                          {row.errors.length > 0 ? (
+                            <Badge variant="destructive">{row.errors.join(", ")}</Badge>
+                          ) : row.warnings.length > 0 ? (
+                            <Badge variant="outline" className="border-amber-500 text-amber-600">
+                              {row.warnings.join("; ")}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-emerald-500 text-emerald-600">
+                              OK
+                            </Badge>
+                          )}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {previewData.map((row, index) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            {row.status === "valid" && <CheckCircle className="h-4 w-4 text-emerald-500" />}
-                            {row.status === "warning" && <AlertCircle className="h-4 w-4 text-amber-500" />}
-                            {row.status === "error" && <AlertCircle className="h-4 w-4 text-red-500" />}
-                          </TableCell>
-                          <TableCell className={!row.name ? "text-red-500" : ""}>{row.name || "(vazio)"}</TableCell>
-                          <TableCell>{row.email}</TableCell>
-                          <TableCell className={!row.phone ? "text-amber-500" : ""}>{row.phone || "(vazio)"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-                <p className="text-sm text-muted-foreground mt-4">
-                  Registros com erros serão ignorados. Registros com avisos serão importados com dados incompletos.
-                </p>
-              </CardContent>
-            </Card>
-
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setStep("upload")}>
-                Voltar
-              </Button>
-              <Button onClick={handleImport}>
-                Importar {previewData.filter((d) => d.status !== "error").length} Membros
-              </Button>
-            </div>
-          </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setStep("upload")}>
+                  Escolher outro arquivo
+                </Button>
+                <Button onClick={handleImport} disabled={validRows.length === 0}>
+                  Importar {validRows.length} membro{validRows.length === 1 ? "" : "s"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {step === "importing" && (
           <Card>
-            <CardContent className="py-12 text-center">
-              <Loader2 className="h-12 w-12 mx-auto text-primary animate-spin mb-4" />
-              <h3 className="text-lg font-medium mb-2">Importando membros...</h3>
-              <p className="text-sm text-muted-foreground mb-4">Aguarde enquanto processamos os dados</p>
-              <Progress value={progress} className="max-w-md mx-auto" />
-              <p className="text-sm text-muted-foreground mt-2">{progress}% concluído</p>
+            <CardContent className="space-y-4 py-12 text-center">
+              <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
+              <p className="text-lg font-medium">Importando membros...</p>
+              <Progress value={progress} className="mx-auto w-full max-w-md" />
+              <p className="text-sm text-muted-foreground">{progress}% concluído</p>
             </CardContent>
           </Card>
         )}
 
         {step === "done" && (
           <Card>
-            <CardContent className="py-12 text-center">
-              <CheckCircle className="h-12 w-12 mx-auto text-emerald-500 mb-4" />
-              <h3 className="text-lg font-medium mb-2">Importação Concluída!</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                {previewData.filter((d) => d.status !== "error").length} membros foram importados com sucesso.
+            <CardContent className="space-y-4 py-12 text-center">
+              <CheckCircle className="mx-auto h-12 w-12 text-emerald-500" />
+              <p className="text-lg font-medium">
+                {result.imported} membro{result.imported === 1 ? "" : "s"} importado{result.imported === 1 ? "" : "s"}
               </p>
-              <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setStep("upload")}>
-                  Importar Mais
-                </Button>
-                <Button onClick={() => router.push("/membros")}>Ver Membros</Button>
-              </div>
+              {result.failed.length > 0 && (
+                <Alert variant="destructive" className="text-left">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Não foi possível importar {result.failed.length} linha(s)</AlertTitle>
+                  <AlertDescription>{result.failed.join(", ")}</AlertDescription>
+                </Alert>
+              )}
+              <Button onClick={() => router.push("/membros")}>Ver membros</Button>
             </CardContent>
           </Card>
         )}

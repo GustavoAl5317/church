@@ -3,14 +3,16 @@ import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/providers/theme-provider"
+import { AuthProvider } from "@/components/auth/auth-provider"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Livre Sou em Cristo – Gestão",
-  description: "Sistema de gestão financeira e administrativa para a igreja Livre Sou em Cristo",
+  title: "Igreja Manager",
+  description: "Sistema de gestão da Igreja Livre Sou em Cristo: membros, eventos, agenda, dízimos e finanças",
   generator: "v0.app",
   icons: {
     icon: [
@@ -49,7 +51,8 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
+          <AuthProvider>{children}</AuthProvider>
+          <Toaster richColors position="top-right" />
         </ThemeProvider>
         <Analytics />
       </body>

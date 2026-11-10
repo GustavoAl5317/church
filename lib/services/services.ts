@@ -97,7 +97,6 @@ export async function updateServiceTemplate(id: string, updates: Partial<Service
 
   const { data, error } = await supabase
     .from('service_templates')
-    // @ts-expect-error - Supabase type inference issue with dynamic updateData
     .update(updateData)
     .eq('id', id)
     .select()
@@ -321,7 +320,6 @@ export async function updateService(id: string, updates: Partial<Service>) {
 
   const { data, error } = await supabase
     .from('services')
-    // @ts-expect-error - Supabase type inference issue with dynamic updateData
     .update(updateData)
     .eq('id', id)
     .select()

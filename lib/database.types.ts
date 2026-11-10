@@ -14,8 +14,9 @@ export interface Database {
           id: string
           name: string
           email: string
-          role: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor'
+          role: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor' | 'membro'
           avatar: string | null
+          is_active: boolean
           created_at: string
           last_login: string | null
         }
@@ -23,8 +24,9 @@ export interface Database {
           id?: string
           name: string
           email: string
-          role: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor'
+          role: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor' | 'membro'
           avatar?: string | null
+          is_active?: boolean
           created_at?: string
           last_login?: string | null
         }
@@ -32,11 +34,100 @@ export interface Database {
           id?: string
           name?: string
           email?: string
-          role?: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor'
+          role?: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor' | 'membro'
           avatar?: string | null
+          is_active?: boolean
           created_at?: string
           last_login?: string | null
         }
+        Relationships: []
+      }
+      user_passwords: {
+        Row: {
+          user_id: string
+          password_hash: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          password_hash: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          password_hash?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      password_reset_requests: {
+        Row: {
+          id: string
+          user_id: string
+          status: 'pendente' | 'concluido' | 'recusado'
+          created_at: string
+          resolved_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          status?: 'pendente' | 'concluido' | 'recusado'
+          created_at?: string
+          resolved_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          status?: 'pendente' | 'concluido' | 'recusado'
+          created_at?: string
+          resolved_at?: string | null
+        }
+        Relationships: []
+      }
+      tithes: {
+        Row: {
+          id: string
+          member_id: string | null
+          member_name: string
+          type: 'dizimo' | 'oferta'
+          amount: number
+          date: string
+          payment_method: 'dinheiro' | 'pix' | 'cartao' | 'transferencia' | 'outros'
+          status: 'confirmado' | 'pendente'
+          observations: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          member_id?: string | null
+          member_name: string
+          type: 'dizimo' | 'oferta'
+          amount: number
+          date: string
+          payment_method: 'dinheiro' | 'pix' | 'cartao' | 'transferencia' | 'outros'
+          status?: 'confirmado' | 'pendente'
+          observations?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          member_id?: string | null
+          member_name?: string
+          type?: 'dizimo' | 'oferta'
+          amount?: number
+          date?: string
+          payment_method?: 'dinheiro' | 'pix' | 'cartao' | 'transferencia' | 'outros'
+          status?: 'confirmado' | 'pendente'
+          observations?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       members: {
         Row: {
@@ -49,6 +140,8 @@ export interface Database {
           entry_date: string
           status: 'ativo' | 'inativo' | 'visitante'
           ministries: string[]
+          baptized: boolean
+          member_role: 'membro' | 'lider' | 'voluntario'
           observations: string | null
           created_at: string
           updated_at: string
@@ -63,6 +156,8 @@ export interface Database {
           entry_date: string
           status: 'ativo' | 'inativo' | 'visitante'
           ministries?: string[]
+          baptized?: boolean
+          member_role?: 'membro' | 'lider' | 'voluntario'
           observations?: string | null
           created_at?: string
           updated_at?: string
@@ -77,10 +172,13 @@ export interface Database {
           entry_date?: string
           status?: 'ativo' | 'inativo' | 'visitante'
           ministries?: string[]
+          baptized?: boolean
+          member_role?: 'membro' | 'lider' | 'voluntario'
           observations?: string | null
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       service_templates: {
         Row: {
@@ -119,6 +217,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       services: {
         Row: {
@@ -160,6 +259,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       service_incomes: {
         Row: {
@@ -189,6 +289,7 @@ export interface Database {
           observations?: string | null
           created_at?: string
         }
+        Relationships: []
       }
       events: {
         Row: {
@@ -198,6 +299,11 @@ export interface Database {
           start_date: string
           end_date: string | null
           status: 'planejado' | 'em_andamento' | 'finalizado' | 'cancelado'
+          event_type: 'culto' | 'reuniao' | 'retiro' | 'conferencia' | 'outro'
+          start_time: string | null
+          location: string | null
+          capacity: number | null
+          attendance: number
           cash_box_id: string | null
           total_income: number
           total_expense: number
@@ -212,6 +318,11 @@ export interface Database {
           start_date: string
           end_date?: string | null
           status?: 'planejado' | 'em_andamento' | 'finalizado' | 'cancelado'
+          event_type?: 'culto' | 'reuniao' | 'retiro' | 'conferencia' | 'outro'
+          start_time?: string | null
+          location?: string | null
+          capacity?: number | null
+          attendance?: number
           cash_box_id?: string | null
           total_income?: number
           total_expense?: number
@@ -226,6 +337,11 @@ export interface Database {
           start_date?: string
           end_date?: string | null
           status?: 'planejado' | 'em_andamento' | 'finalizado' | 'cancelado'
+          event_type?: 'culto' | 'reuniao' | 'retiro' | 'conferencia' | 'outro'
+          start_time?: string | null
+          location?: string | null
+          capacity?: number | null
+          attendance?: number
           cash_box_id?: string | null
           total_income?: number
           total_expense?: number
@@ -233,6 +349,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       cash_boxes: {
         Row: {
@@ -265,6 +382,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       cash_transactions: {
         Row: {
@@ -318,6 +436,7 @@ export interface Database {
           observations?: string | null
           created_at?: string
         }
+        Relationships: []
       }
       suppliers: {
         Row: {
@@ -353,6 +472,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       bills_payable: {
         Row: {
@@ -409,6 +529,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
     }
     Views: {
@@ -418,6 +539,9 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
       [_ in never]: never
     }
   }

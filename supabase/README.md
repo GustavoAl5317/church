@@ -5,6 +5,7 @@ Este diretório contém os scripts SQL para criar e configurar o banco de dados 
 ## Arquivos
 
 - `schema.sql` - Script principal para criar todas as tabelas, índices, triggers e funções
+- `migration-igreja-manager.sql` - Atualiza um banco já existente para a versão Igreja Manager (papéis, senhas, recuperação de senha, membros, eventos e dízimos)
 
 ## Como Usar
 

@@ -1,56 +1,42 @@
-'use client'
+"use client"
 
-import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { isAuthenticated } from '@/lib/auth'
-import { Loader2 } from 'lucide-react'
+import { useEffect } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { useAuth } from "@/hooks/use-auth"
+import { canAccessPath } from "@/lib/permissions"
 
-interface ProtectedRouteProps {
-  children: React.ReactNode
-  requiredRole?: 'admin' | 'tesouraria' | 'secretaria' | 'pastor' | 'auditor'
-}
-
-export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+/**
+ * Bloqueia a página para quem não fez login ou não tem permissão para a rota atual.
+ */
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthorized, setIsAuthorized] = useState(false)
+  const { user, isLoading } = useAuth()
+
+  const allowed = !!user && canAccessPath(user.role, pathname)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      // Verifica autenticação
-      if (!isAuthenticated()) {
-        router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
-        return
-      }
+    if (isLoading) return
 
-      // Se há role requerida, verifica
-      if (requiredRole) {
-        const { getCurrentUser } = await import('@/lib/auth')
-        const user = getCurrentUser()
-        if (!user || user.role !== requiredRole) {
-          router.push('/dashboard')
-          return
-        }
-      }
-
-      setIsAuthorized(true)
-      setIsLoading(false)
+    if (!user) {
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
+      return
     }
 
-    checkAuth()
-  }, [router, pathname, requiredRole])
+    if (!allowed) {
+      toast.error("Você não tem permissão para acessar esta página.")
+      router.replace("/dashboard")
+    }
+  }, [isLoading, user, allowed, pathname, router])
 
-  if (isLoading) {
+  if (isLoading || !allowed) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     )
-  }
-
-  if (!isAuthorized) {
-    return null
   }
 
   return <>{children}</>

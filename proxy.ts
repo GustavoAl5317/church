@@ -5,7 +5,9 @@ import type { NextRequest } from 'next/server'
 const publicRoutes = ['/login', '/recuperar-senha', '/api/auth']
 
 // Rotas que redirecionam para login se não autenticado
-const protectedRoutes = ['/dashboard', '/cultos', '/caixa', '/contas-a-pagar', '/eventos', '/membros', '/usuarios', '/relatorios', '/auditoria', '/configuracoes', '/perfil']
+// A sessão fica no navegador (localStorage), então a verificação de login e de permissão
+// acontece no cliente, em components/auth/protected-route.tsx, com as regras de lib/permissions.ts
+const protectedRoutes = ['/dashboard', '/membros', '/eventos', '/agenda', '/dizimos', '/cultos', '/caixa', '/contas-a-pagar', '/relatorio', '/configuracoes', '/perfil']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

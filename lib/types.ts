@@ -1,6 +1,6 @@
 // Type definitions for the church management system
 
-export type UserRole = "admin" | "tesouraria" | "secretaria" | "pastor" | "auditor"
+export type UserRole = "admin" | "tesouraria" | "secretaria" | "pastor" | "auditor" | "membro"
 
 export interface User {
   id: string
@@ -8,9 +8,23 @@ export interface User {
   email: string
   role: UserRole
   avatar?: string
+  isActive: boolean
   createdAt: Date
   lastLogin?: Date
 }
+
+export interface PasswordResetRequest {
+  id: string
+  userId: string
+  userName: string
+  userEmail: string
+  status: "pendente" | "concluido" | "recusado"
+  createdAt: Date
+  resolvedAt?: Date
+}
+
+export type MemberStatus = "ativo" | "inativo" | "visitante"
+export type MemberRole = "membro" | "lider" | "voluntario"
 
 export interface Member {
   id: string
@@ -20,7 +34,9 @@ export interface Member {
   email?: string
   address?: string
   entryDate: Date
-  status: "ativo" | "inativo" | "visitante"
+  status: MemberStatus
+  memberRole: MemberRole
+  baptized: boolean
   ministries: string[]
   observations?: string
   createdAt: Date
@@ -71,16 +87,41 @@ export interface ServiceIncome {
   createdAt: Date
 }
 
+export type EventType = "culto" | "reuniao" | "retiro" | "conferencia" | "outro"
+export type EventStatus = "planejado" | "em_andamento" | "finalizado" | "cancelado"
+
 export interface Event {
   id: string
   name: string
   description?: string
+  type: EventType
   startDate: Date
+  startTime?: string
   endDate?: Date
-  status: "planejado" | "em_andamento" | "finalizado" | "cancelado"
+  location?: string
+  capacity?: number
+  attendance: number
+  status: EventStatus
   cashBoxId?: string
   totalIncome: number
   totalExpense: number
+  observations?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type TitheType = "dizimo" | "oferta"
+export type TitheStatus = "confirmado" | "pendente"
+
+export interface Tithe {
+  id: string
+  memberId?: string
+  memberName: string
+  type: TitheType
+  amount: number
+  date: Date
+  paymentMethod: PaymentMethod
+  status: TitheStatus
   observations?: string
   createdAt: Date
   updatedAt: Date

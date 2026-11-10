@@ -40,6 +40,20 @@ export function saveUserSession(user: User): void {
 }
 
 /**
+ * Atualiza os dados do usuário guardados na sessão (ex.: papel alterado pelo admin)
+ */
+export function updateSessionUser(user: User): void {
+  const session = getUserSession()
+  if (!session) return
+  session.user = user
+  try {
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session))
+  } catch (error) {
+    console.error('Erro ao atualizar sessão:', error)
+  }
+}
+
+/**
  * Obtém a sessão do usuário do localStorage com validações de segurança
  */
 export function getUserSession(): UserSession | null {
