@@ -582,12 +582,12 @@ export default function ContasAPagarPage() {
     <AppLayout breadcrumbs={[{ label: "Contas a Pagar" }]}>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Contas a Pagar</h1>
             <p className="text-muted-foreground">Gerencie e acompanhe todas as despesas da igreja</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <Link href="/contas-a-pagar/categorias">Categorias</Link>
             </Button>

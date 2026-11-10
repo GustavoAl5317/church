@@ -113,12 +113,12 @@ export default function CaixaPage() {
   return (
     <AppLayout breadcrumbs={[{ label: "Caixa" }]}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Caixa</h1>
             <p className="text-muted-foreground">Controle financeiro da igreja</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={loadData} disabled={isLoading}>
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -151,7 +151,7 @@ export default function CaixaPage() {
 
           <TabsContent value="geral" className="space-y-6">
             {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Saldo Atual</CardTitle>

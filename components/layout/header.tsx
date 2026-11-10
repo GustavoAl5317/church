@@ -30,7 +30,7 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
 
-      <Breadcrumb className="hidden md:flex">
+      <Breadcrumb className="hidden min-w-0 md:flex">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink href="/dashboard">Início</BreadcrumbLink>
@@ -61,7 +61,7 @@ export function Header({ breadcrumbs = [] }: HeaderProps) {
 
         {user && (
           <Link href="/perfil" className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted">
-            <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
+            <span className="hidden text-sm text-muted-foreground xl:inline">{user.email}</span>
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
                 {user.name.charAt(0).toUpperCase()}

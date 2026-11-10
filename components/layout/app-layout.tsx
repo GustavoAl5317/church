@@ -17,9 +17,9 @@ export function AppLayout({ children, breadcrumbs }: AppLayoutProps) {
     <ProtectedRoute>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="min-w-0">
           <Header breadcrumbs={breadcrumbs} />
-          <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-hidden p-4 md:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
     </ProtectedRoute>
