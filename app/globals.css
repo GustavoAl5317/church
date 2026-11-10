@@ -124,6 +124,15 @@
   }
 }
 
+/* Menu lateral: rola sem mostrar a barra de rolagem */
+[data-sidebar="content"] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+[data-sidebar="content"]::-webkit-scrollbar {
+  display: none;
+}
+
 /* Impressão / "Salvar como PDF": mostra só o conteúdo da página */
 @media print {
   [data-slot="sidebar"],
