@@ -138,7 +138,7 @@ export async function getServices(startDate?: Date, endDate?: Date) {
   console.log('🔍 Verificando configuração do Supabase...', { isConfigured: isSupabaseConfigured })
   if (!isSupabaseConfigured) {
     console.error('❌ Supabase não está configurado!')
-    throw new Error('Supabase não está configurado. Configure as variáveis de ambiente NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env')
+    throw new Error('Supabase não está configurado. Configure as variáveis de ambiente NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no arquivo .env')
   }
 
   let query = supabase

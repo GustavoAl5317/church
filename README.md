@@ -55,7 +55,7 @@ cp env.example.txt .env
 
 4. Preencha as variáveis no arquivo `.env`:
    - `NEXT_PUBLIC_SUPABASE_URL`: URL do seu projeto Supabase (encontre em Settings > API)
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Chave anônima do Supabase (encontre em Settings > API)
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Chave publishable do Supabase, `sb_publishable_...` (Settings > API Keys). O nome antigo `NEXT_PUBLIC_SUPABASE_ANON_KEY` também funciona.
 
 **Importante**: Reinicie o servidor após criar/editar o arquivo `.env`
 

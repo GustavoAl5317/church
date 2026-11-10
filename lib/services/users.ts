@@ -37,7 +37,7 @@ function mapUser(row: UserRow): User {
 function requireSupabase() {
   if (!isSupabaseConfigured) {
     throw new Error(
-      'Supabase não está configurado. Cadastre NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.',
+      'Supabase não está configurado. Cadastre NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.',
     )
   }
 }

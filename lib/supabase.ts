@@ -2,7 +2,10 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+// Aceita o nome novo do Supabase (PUBLISHABLE_KEY) e o antigo (ANON_KEY).
+// Cada variável precisa ser lida por extenso para o Next.js incluí-la no navegador.
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 // Check if environment variables are configured
 const isConfigured = supabaseUrl && supabaseAnonKey && 
@@ -18,7 +21,7 @@ if (!isConfigured) {
     // Server-side: log error
     console.error(
       '\n❌ ERRO: Variáveis de ambiente do Supabase não configuradas!\n' +
-      'Por favor, configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env\n' +
+      'Por favor, configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no arquivo .env\n' +
       'Veja SETUP.md para instruções detalhadas.\n' +
       'Copie o arquivo env.example.txt para .env e preencha com suas credenciais.\n'
     )
@@ -69,7 +72,7 @@ export function describeSupabaseError(error: unknown): string {
     return `O banco está desatualizado. Rode supabase/migration-igreja-manager.sql no SQL Editor do Supabase. (${message})`
   }
   if (lower.includes('invalid api key') || lower.includes('jwt') || e.code === 'PGRST301') {
-    return 'A chave do Supabase é inválida. Confira NEXT_PUBLIC_SUPABASE_ANON_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.'
+    return 'A chave do Supabase é inválida. Confira NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY nas variáveis de ambiente da Vercel e faça um novo deploy.'
   }
   if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('fetch failed')) {
     return 'Não foi possível conectar ao Supabase. Confira NEXT_PUBLIC_SUPABASE_URL na Vercel e se o projeto do Supabase está ativo (projetos gratuitos pausam após dias sem uso).'

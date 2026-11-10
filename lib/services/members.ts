@@ -51,7 +51,7 @@ function toRow(member: Partial<MemberInput>) {
 export async function getMembers() {
   if (!isSupabaseConfigured) {
     throw new Error(
-      'Supabase não está configurado. Por favor, configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env. Veja SETUP.md para instruções.'
+      'Supabase não está configurado. Por favor, configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no arquivo .env. Veja SETUP.md para instruções.'
     )
   }
 
